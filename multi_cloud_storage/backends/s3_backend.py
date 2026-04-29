@@ -26,6 +26,9 @@ class S3Backend(CloudStorageBackend):
 				"region_name": self.config.get("s3_region_name") or "us-east-1",
 				"config": Config(signature_version="s3v4"),
 			}
+			endpoint_url = self.config.get("s3_endpoint_url")
+			if endpoint_url:
+				kwargs["endpoint_url"] = endpoint_url
 			aws_key = self.config.get("s3_aws_key")
 			raw = frappe.db.get_single_value("Cloud Storage Configuration", "s3_aws_secret")
 			aws_secret = None
@@ -74,7 +77,7 @@ class S3Backend(CloudStorageBackend):
 		bucket_type = "private" if is_private else "public"
 		bucket = self._bucket(bucket_type)
 		extra = {"ContentType": content_type, "Metadata": {"file_name": file_name or ""}}
-		if not is_private:
+		if not is_private and not self.config.get("s3_disable_acl"):
 			extra["ACL"] = "public-read"
 		try:
 			self.client.upload_file(file_path, bucket, key, ExtraArgs=extra)
