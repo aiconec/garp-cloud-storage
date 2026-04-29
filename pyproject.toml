@@ -1,9 +1,9 @@
 [project]
 name = "multi_cloud_storage"
 authors = [
-    { name = "Bhushan Barbuddhe", email = "frappeteam@dhwaniris.com"}
+    { name = "GARP ERP", email = "sofyan.h.ahmad@gmail.com"}
 ]
-description = "MultiCloud Storage is a multi-cloud file storage app for the Frappe framework that supports Amazon S3 and Google Cloud Storage (GCS)."
+description = "GARP Cloud Storage is a multi-cloud file storage app for GARP ERP that supports Amazon S3-compatible providers and Google Cloud Storage."
 requires-python = ">=3.14"
 readme = "README.md"
 dynamic = ["version"]

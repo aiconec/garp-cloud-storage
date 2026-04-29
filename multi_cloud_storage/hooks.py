@@ -1,9 +1,10 @@
 app_name = "multi_cloud_storage"
-app_title = "MultiCloud Storage"
-app_publisher = "Bhushan Barbuddhe"
-app_description = "MultiCloud Storage is a multi-cloud file storage app for the Frappe framework that supports Amazon S3 and Google Cloud Storage (GCS)."
-app_email = "frappeteam@dhwaniris.com"
+app_title = "GARP Cloud Storage"
+app_publisher = "GARP ERP"
+app_description = "GARP Cloud Storage is a multi-cloud file storage app for GARP ERP that supports Amazon S3-compatible providers (including Railway Bucket) and Google Cloud Storage."
+app_email = "sofyan.h.ahmad@gmail.com"
 app_license = "mit"
+app_logo_url = "/assets/multi_cloud_storage/images/logo.svg"
 
 # Apps
 # ------------------
