@@ -4,7 +4,7 @@ authors = [
     { name = "GARP ERP", email = "sofyan.h.ahmad@gmail.com"}
 ]
 description = "GARP Cloud Storage is a multi-cloud file storage app for GARP ERP that supports Amazon S3-compatible providers and Google Cloud Storage."
-requires-python = ">=3.14"
+requires-python = ">=3.12"
 readme = "README.md"
 dynamic = ["version"]
 dependencies = [
