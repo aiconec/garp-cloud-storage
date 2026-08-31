@@ -4,7 +4,7 @@ app_publisher = "GARP ERP"
 app_description = "GARP Cloud Storage is a multi-cloud file storage app for GARP ERP that supports Amazon S3-compatible providers (including Railway Bucket) and Google Cloud Storage."
 app_email = "sofyan.h.ahmad@gmail.com"
 app_license = "mit"
-app_logo_url = "/assets/multi_cloud_storage/images/logo.svg"
+app_logo_url = "/assets/multi_cloud_storage/images/garp-drive-icon.svg"
 
 # Apps
 # ------------------
