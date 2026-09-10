@@ -132,6 +132,8 @@ app_logo_url = "/assets/multi_cloud_storage/images/garp-drive-icon.svg"
 # Document Events
 # ---------------
 
+after_install = "multi_cloud_storage.install.after_install"
+
 doc_events = {
 	"File": {
 		"after_insert": "multi_cloud_storage.controller.file_upload_to_cloud",

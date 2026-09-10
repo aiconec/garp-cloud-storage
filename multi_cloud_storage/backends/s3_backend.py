@@ -2,16 +2,15 @@
 # For license information, please see license.txt
 
 import datetime
-import random
+import secrets
 import re
-import string
 
 import boto3
 import frappe
 from botocore.client import Config
 from botocore.exceptions import ClientError
 
-from .base import CloudStorageBackend
+from .base import KEY_ALPHABET, MAX_KEY_LENGTH, CloudStorageBackend
 
 
 class S3Backend(CloudStorageBackend):
@@ -63,14 +62,35 @@ class S3Backend(CloudStorageBackend):
 				if k:
 					return k.rstrip("/").lstrip("/")
 			except Exception:
-				pass
+				# Was a bare pass. A broken hook then showed up as files
+				# quietly landing under the default layout instead of the one
+				# the site configured — a wrong answer that looks like a
+				# working one.
+				frappe.log_error(
+					title="MultiCloud Storage key_generator hook failed",
+					message=frappe.get_traceback(),
+				)
 		file_name = file_name.replace(" ", "_")
 		file_name = self._strip_special_chars(file_name)
-		key_suffix = "".join(random.choices(string.ascii_uppercase + string.digits, k=8))
+		# secrets, not random: random.choices draws from the Mersenne Twister,
+		# whose state is recoverable from a few dozen observed outputs. A user
+		# can read back the keys of their OWN uploads, so a predictable suffix
+		# let them derive the keys of everybody else's.
+		key_suffix = "".join(secrets.choice(KEY_ALPHABET) for _ in range(8))
 		today = datetime.datetime.now()
 		prefix = f"{today:%Y/%m/%d}/{parent_doctype}"
 		if self.config.get("folder_name"):
 			prefix = f"{self.config.folder_name}/{prefix}"
+		# The key is stored in an indexed varchar(255); a long attachment name
+		# under a long prefix would otherwise be truncated on write and never
+		# resolve back to its File row.
+		budget = MAX_KEY_LENGTH - len(prefix) - len(key_suffix) - 2
+		if budget < 1:
+			file_name = ""
+		elif len(file_name) > budget:
+			stem, dot, ext = file_name.rpartition(".")
+			ext = f".{ext}" if dot and len(ext) <= 10 else ""
+			file_name = (stem or file_name)[: max(budget - len(ext), 1)] + ext
 		return f"{prefix}/{key_suffix}_{file_name}"
 
 	def upload(self, file_path, key, content_type, is_private, file_name=None):
@@ -103,6 +123,17 @@ class S3Backend(CloudStorageBackend):
 		return self.client.generate_presigned_url("get_object", Params=params, ExpiresIn=expiry)
 
 	def get_public_url(self, key):
+		"""
+		Unsigned URL for an object the bucket serves publicly.
+
+		Only ever called for a file controller.can_serve_public has already
+		cleared, so this cannot mint a URL that the bucket answers with 403.
+		s3_public_base_url wins when set — a CDN or custom domain in front of
+		the bucket rarely matches the API endpoint the client talks to.
+		"""
+		base = (self.config.get("s3_public_base_url") or "").strip().rstrip("/")
+		if base:
+			return f"{base}/{key}"
 		bucket = self._bucket("public")
 		endpoint = self.client.meta.endpoint_url
 		return f"{endpoint}/{bucket}/{key}"

@@ -41,50 +41,18 @@ frappe.ui.form.on("Cloud Storage Configuration", {
 						freeze: true,
 						callback(r) {
 							if (!r.message) return;
-							const m = r.message;
-							const migrated = m.migrated ?? 0;
-							const skipped = m.skipped ?? 0;
-							const total = m.total ?? 0;
-							frappe.show_alert({
-								message:
-									__("Migrated") +
-									` ${migrated} ` +
-									__("file(s). Skipped:") +
-									` ${skipped}. ` +
-									__("Total:") +
-									` ${total}.`,
-								indicator: "blue",
+							// The migration runs in a background job now: walking the
+							// whole File table inline ran past the gateway timeout and
+							// left the site half migrated. So there are no per-file
+							// counts to report here — the job writes its summary to the
+							// Error Log when it finishes.
+							frappe.msgprint({
+								title: r.message.queued
+									? __("Migration queued")
+									: __("Migration not started"),
+								message: r.message.message,
+								indicator: r.message.queued ? "blue" : "orange",
 							});
-							const details = [];
-							if (m.skipped_not_local_url)
-								details.push(__("Not local URL:") + " " + m.skipped_not_local_url);
-							if (m.skipped_no_url_or_cloud)
-								details.push(
-									__("No URL or on cloud:") + " " + m.skipped_no_url_or_cloud
-								);
-							if (m.skipped_file_not_found)
-								details.push(
-									__("File not on disk:") + " " + m.skipped_file_not_found
-								);
-							if (m.skipped_other)
-								details.push(__("Other / error:") + " " + m.skipped_other);
-							if (details.length) {
-								frappe.msgprint({
-									title: __("Migration details"),
-									message: details.join("<br>"),
-									indicator: "blue",
-								});
-							}
-							if (m.errors && m.errors.length) {
-								frappe.msgprint({
-									title: __("Some files failed"),
-									message: m.errors
-										.map((e) => `${e.file}: ${e.error}`)
-										.join("<br>"),
-									indicator: "orange",
-								});
-							}
-							frm.reload_doc();
 						},
 					});
 				}

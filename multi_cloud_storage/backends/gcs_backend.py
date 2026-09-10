@@ -3,15 +3,14 @@
 
 import datetime
 import json
-import random
-import string
+import secrets
 
 import frappe
 from google.api_core import exceptions as gcs_exceptions
 from google.cloud import storage
 from google.oauth2 import service_account
 
-from .base import CloudStorageBackend
+from .base import KEY_ALPHABET, MAX_KEY_LENGTH, CloudStorageBackend
 
 
 class GCSBackend(CloudStorageBackend):
@@ -59,13 +58,34 @@ class GCSBackend(CloudStorageBackend):
 				if k:
 					return k.rstrip("/").lstrip("/")
 			except Exception:
-				pass
+				# Was a bare pass. A broken hook then showed up as files
+				# quietly landing under the default layout instead of the one
+				# the site configured — a wrong answer that looks like a
+				# working one.
+				frappe.log_error(
+					title="MultiCloud Storage key_generator hook failed",
+					message=frappe.get_traceback(),
+				)
 		file_name = self._strip_special_chars(file_name)
-		key_suffix = "".join(random.choices(string.ascii_uppercase + string.digits, k=8))
+		# secrets, not random: random.choices draws from the Mersenne Twister,
+		# whose state is recoverable from a few dozen observed outputs. A user
+		# can read back the keys of their OWN uploads, so a predictable suffix
+		# let them derive the keys of everybody else's.
+		key_suffix = "".join(secrets.choice(KEY_ALPHABET) for _ in range(8))
 		today = datetime.datetime.now()
 		prefix = f"{today:%Y/%m/%d}/{parent_doctype}"
 		if self.config.get("folder_name"):
 			prefix = f"{self.config.folder_name}/{prefix}"
+		# The key is stored in an indexed varchar(255); a long attachment name
+		# under a long prefix would otherwise be truncated on write and never
+		# resolve back to its File row.
+		budget = MAX_KEY_LENGTH - len(prefix) - len(key_suffix) - 2
+		if budget < 1:
+			file_name = ""
+		elif len(file_name) > budget:
+			stem, dot, ext = file_name.rpartition(".")
+			ext = f".{ext}" if dot and len(ext) <= 10 else ""
+			file_name = (stem or file_name)[: max(budget - len(ext), 1)] + ext
 		return f"{prefix}/{key_suffix}_{file_name}"
 
 	def upload(self, file_path, key, content_type, is_private, file_name=None):

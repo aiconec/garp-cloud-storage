@@ -18,6 +18,7 @@
   "column_break_s3",
   "s3_region_name",
   "s3_endpoint_url",
+  "s3_public_base_url",
   "s3_disable_acl",
   "s3_aws_secret",
   "s3_aws_key",
@@ -108,6 +109,13 @@
    "fieldname": "s3_endpoint_url",
    "fieldtype": "Data",
    "label": "Endpoint URL"
+  },
+  {
+   "depends_on": "eval:doc.storage_provider=='Amazon S3'",
+   "description": "Optional. A CDN or custom domain that serves the public bucket without a signature. Required to store public files when ACLs are disabled and the public bucket is the same bucket as the private one; without it, public files stay on local disk rather than being given a URL the bucket would refuse.",
+   "fieldname": "s3_public_base_url",
+   "fieldtype": "Data",
+   "label": "S3 Public Base URL"
   },
   {
    "default": "0",
