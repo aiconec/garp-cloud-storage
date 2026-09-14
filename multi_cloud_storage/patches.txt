@@ -6,3 +6,4 @@
 # Patches added in this section will be executed after doctypes are migrated
 multi_cloud_storage.patches.add_file_object_key_field
 multi_cloud_storage.patches.secure_file_object_key_field
+multi_cloud_storage.patches.audit_crafted_object_keys
