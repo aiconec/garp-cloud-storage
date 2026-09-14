@@ -10,7 +10,13 @@ from google.api_core import exceptions as gcs_exceptions
 from google.cloud import storage
 from google.oauth2 import service_account
 
-from .base import KEY_ALPHABET, MAX_KEY_LENGTH, CloudStorageBackend
+from .base import (
+	KEY_ALPHABET,
+	MAX_KEY_LENGTH,
+	CloudStorageBackend,
+	content_disposition_for,
+	response_content_type_for,
+)
 
 
 class GCSBackend(CloudStorageBackend):
@@ -92,7 +98,11 @@ class GCSBackend(CloudStorageBackend):
 		bucket_type = "private" if is_private else "public"
 		bucket = self._bucket(bucket_type)
 		blob = bucket.blob(key)
-		blob.upload_from_filename(file_path, content_type=content_type)
+		# Served type and disposition come from the NAME, never the sniffed
+		# bytes (see response_content_type_for). Set before upload so a public
+		# object, fetched by plain URL with no overrides, carries them.
+		blob.content_disposition = content_disposition_for(file_name)
+		blob.upload_from_filename(file_path, content_type=response_content_type_for(file_name))
 		return key
 
 	def delete(self, key, bucket_type="private"):
@@ -123,7 +133,16 @@ class GCSBackend(CloudStorageBackend):
 		bucket = self._bucket(bucket_type)
 		blob = bucket.blob(key)
 		expiry = datetime.timedelta(seconds=self.config.signed_url_expiry_time or 300)
-		return blob.generate_signed_url(version="v4", expiration=expiry, method="GET")
+		# Force `attachment` for the types a browser would execute in the
+		# bucket's origin. This URL previously carried no disposition at all,
+		# so an uploaded .svg or .html rendered inline on storage.googleapis.com.
+		return blob.generate_signed_url(
+			version="v4",
+			expiration=expiry,
+			method="GET",
+			response_disposition=content_disposition_for(file_name),
+			response_type=response_content_type_for(file_name),
+		)
 
 	def get_public_url(self, key):
 		blob = self._bucket("public").blob(key)

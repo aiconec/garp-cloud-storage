@@ -10,7 +10,14 @@ import frappe
 from botocore.client import Config
 from botocore.exceptions import ClientError
 
-from .base import KEY_ALPHABET, MAX_KEY_LENGTH, CloudStorageBackend
+from .base import (
+	KEY_ALPHABET,
+	MAX_KEY_LENGTH,
+	CloudStorageBackend,
+	content_disposition_for,
+	response_content_type_for,
+	validate_endpoint_url,
+)
 
 
 class S3Backend(CloudStorageBackend):
@@ -25,7 +32,9 @@ class S3Backend(CloudStorageBackend):
 				"region_name": self.config.get("s3_region_name") or "us-east-1",
 				"config": Config(signature_version="s3v4"),
 			}
-			endpoint_url = self.config.get("s3_endpoint_url")
+			# Validated, not trusted: the field is tenant-admin editable and
+			# boto3 signs a request to whatever it contains.
+			endpoint_url = validate_endpoint_url(self.config.get("s3_endpoint_url"))
 			if endpoint_url:
 				kwargs["endpoint_url"] = endpoint_url
 			aws_key = self.config.get("s3_aws_key")
@@ -96,7 +105,16 @@ class S3Backend(CloudStorageBackend):
 	def upload(self, file_path, key, content_type, is_private, file_name=None):
 		bucket_type = "private" if is_private else "public"
 		bucket = self._bucket(bucket_type)
-		extra = {"ContentType": content_type, "Metadata": {"file_name": file_name or ""}}
+		# Store the type and disposition the object must be SERVED with, derived
+		# from the name -- not the sniffed `content_type` argument. A public
+		# object is fetched by its plain URL with no response overrides, so this
+		# metadata is all that stands between an uploaded SVG and script running
+		# in the bucket's origin.
+		extra = {
+			"ContentType": response_content_type_for(file_name),
+			"ContentDisposition": content_disposition_for(file_name),
+			"Metadata": {"file_name": file_name or "", "sniffed_type": content_type or ""},
+		}
 		if not is_private and not self.config.get("s3_disable_acl"):
 			extra["ACL"] = "public-read"
 		try:
@@ -118,8 +136,17 @@ class S3Backend(CloudStorageBackend):
 		bucket = self._bucket(bucket_type)
 		expiry = self.config.signed_url_expiry_time or 300
 		params = {"Bucket": bucket, "Key": key}
-		if file_name:
-			params["ResponseContentDisposition"] = f"filename={file_name}"
+		# Always send a disposition, and force `attachment` for the types a
+		# browser would otherwise execute in the bucket's origin. The previous
+		# value was `filename=...` with no disposition type at all, so an
+		# uploaded .svg or .html rendered INLINE and ran its script against
+		# *.amazonaws.com (or the configured custom endpoint). It also
+		# interpolated the caller's file_name raw, which could inject extra
+		# parameters into the signed URL. See content_disposition_for.
+		params["ResponseContentDisposition"] = content_disposition_for(file_name)
+		# And the type, for the same reason: objects uploaded before this change
+		# carry libmagic's opinion of the bytes as their stored ContentType.
+		params["ResponseContentType"] = response_content_type_for(file_name)
 		return self.client.generate_presigned_url("get_object", Params=params, ExpiresIn=expiry)
 
 	def get_public_url(self, key):

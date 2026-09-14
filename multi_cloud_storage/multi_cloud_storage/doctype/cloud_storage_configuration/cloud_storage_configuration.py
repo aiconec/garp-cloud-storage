@@ -49,6 +49,11 @@ class CloudStorageConfiguration(Document):
 			if not (self.s3_public_bucket_name or "").strip():
 				frappe.throw(frappe._("S3 Public Bucket Name is required"))
 			self._validate_and_encrypt_s3_secret()
+			# Reject an internal/unsafe endpoint at save time, so a bad value is
+			# an error in the form rather than a failed upload for every user.
+			from multi_cloud_storage.backends.base import validate_endpoint_url
+
+			validate_endpoint_url((self.s3_endpoint_url or "").strip() or None)
 		elif self.storage_provider == "Google Cloud Storage":
 			if not (self.gcs_private_bucket_name or "").strip():
 				frappe.throw(frappe._("GCS Private Bucket Name is required"))

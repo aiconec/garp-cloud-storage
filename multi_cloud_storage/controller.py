@@ -222,12 +222,25 @@ def file_upload_to_cloud(doc, method=None):
 
 
 def _key_of(doc):
-	"""The object key this File row was uploaded under, new field or old."""
+	"""The object key this File row was uploaded under, new field or old.
+
+	Once the key field exists there is deliberately NO content_hash fallback.
+	The backfill patch populated the field for every genuine row, whereas
+	content_hash is an ordinary permlevel-0 field a user can set on a row they
+	create. Falling through to it would let a crafted row name someone else's
+	object on the delete path -- the row would not match the "is anything else
+	still referencing this key" guard below (that guard looks at the field),
+	so the object would be deleted out from under its real owner.
+
+	A row with no value in the field is simply not ours, and returning no key
+	means delete_from_cloud leaves the bucket alone.
+	"""
 	if _has_key_field():
 		key = (doc.get(OBJECT_KEY_FIELD) or "").strip()
-		if key:
-			bucket_type = "private" if doc.is_private else "public"
-			return key, bucket_type
+		if not key:
+			return None, "private"
+		bucket_type = "private" if doc.is_private else "public"
+		return key, bucket_type
 	return _parse_content_hash(doc.content_hash)
 
 
@@ -294,18 +307,33 @@ def _readable_file_for_key(raw_key, parsed_key):
 
 	names = []
 	if _has_key_field() and parsed_key:
-		names = frappe.get_all(
-			"File", filters={OBJECT_KEY_FIELD: parsed_key}, pluck="name", limit=MAX_ROWS_PER_KEY
-		)
-	if not names and raw_key:
-		# Uploads from before the key moved into its own field.
+		# Both the full key and the truncated one.
 		#
-		# Compared against the TRUNCATED key. content_hash is a Data column,
-		# varchar(140), so the old code silently cut long keys off at write
-		# time while the file_url kept the whole thing. Matching on the full
-		# key the URL carries would then miss those rows, and a permission
-		# check that cannot find the row denies access — turning a legacy file
-		# that used to download into a 403.
+		# content_hash is varchar(140), so the pre-migration code cut long keys
+		# off at write time while the file_url kept the whole thing, and the
+		# backfill patch copied that truncated value into this field. Matching
+		# only the full key from the URL would miss exactly those rows and turn
+		# a legacy file that used to download into a 403.
+		candidates = [parsed_key]
+		truncated = parsed_key[: frappe.db.VARCHAR_LEN]
+		if truncated != parsed_key:
+			candidates.append(truncated)
+		names = frappe.get_all(
+			"File",
+			filters={OBJECT_KEY_FIELD: ["in", candidates]},
+			pluck="name",
+			limit=MAX_ROWS_PER_KEY,
+		)
+	elif not _has_key_field() and raw_key:
+		# Only for a site that has not run the patch yet, where the key still
+		# lives in content_hash and there is no other place to look.
+		#
+		# This branch is deliberately NOT a fallback for sites that DO have the
+		# field. content_hash is an ordinary permlevel-0 field, so a user can
+		# set it on a row they create; if a miss on the key field fell through
+		# to here, that crafted row would match and satisfy the read check,
+		# which is the whole hole this resolver exists to close. Once the field
+		# exists the backfill has run and every genuine row is findable above.
 		names = frappe.get_all(
 			"File",
 			filters={"content_hash": raw_key[: frappe.db.VARCHAR_LEN]},
